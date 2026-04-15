@@ -47,6 +47,20 @@ type AgentAvailability = {
   available: boolean;
 };
 
+type AutomationTask = {
+  id: string;
+  agent_id: string;
+  title: string;
+  prompt: string;
+  status: string; // queued | running | completed | failed
+  created_at_ms: number;
+  started_at_ms: number | null;
+  finished_at_ms: number | null;
+  session_id: string | null;
+  result_json: unknown | null;
+  error: string | null;
+};
+
 type AgentDecor = {
   color: string;
   icon: string;
@@ -62,7 +76,7 @@ const AGENT_DECOR: Record<string, AgentDecor> = {
   shell: { color: "#8A8A8A", icon: "$", role: "Shell", shortcut: "5" },
 };
 
-type RightTab = "editor" | "reader" | "db" | "outline";
+type RightTab = "editor" | "reader" | "db" | "outline" | "automation";
 
 export default function App() {
   const [agents, setAgents] = useState<AgentSpec[]>([]);
@@ -102,6 +116,12 @@ export default function App() {
 
   const [outlineText, setOutlineText] = useState<string>("");
 
+  // Automation panel state.
+  const [automationTasks, setAutomationTasks] = useState<AutomationTask[]>([]);
+  const [autoAgentId, setAutoAgentId] = useState<string>("claude");
+  const [autoTitle, setAutoTitle] = useState<string>("");
+  const [autoPrompt, setAutoPrompt] = useState<string>("");
+
   // One session per agent (MVP).
   const [sessionsByAgent, setSessionsByAgent] = useState<Record<string, string>>({});
   const [activeTerminalAgentId, setActiveTerminalAgentId] = useState<string | null>(null);
@@ -116,6 +136,7 @@ export default function App() {
   const workspaceRootRef = useRef<string>("");
   const mainRef = useRef<HTMLElement | null>(null);
   const autoStartDoneRef = useRef<boolean>(false);
+  const annotationsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Vertical split: terminal column width in pixels.
   const [terminalWidthPx, setTerminalWidthPx] = useState<number>(640);
@@ -223,6 +244,30 @@ export default function App() {
     };
   }, []);
 
+  // Listen for automation task updates from the backend runner.
+  useEffect(() => {
+    let unlisten: null | (() => void) = null;
+    let disposed = false;
+    (async () => {
+      unlisten = await listen<string>("automation://task_updated", () => {
+        if (disposed) return;
+        invoke("automation_list_tasks")
+          .then((tasks) => {
+            if (!disposed) {
+              const list = tasks as AutomationTask[];
+              list.sort((a, b) => b.created_at_ms - a.created_at_ms);
+              setAutomationTasks(list);
+            }
+          })
+          .catch(() => {});
+      });
+    })().catch(() => {});
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
   useEffect(() => {
     if (autoStartDoneRef.current) return;
     if (!startupLoaded || !availabilityLoaded) return;
@@ -275,12 +320,13 @@ export default function App() {
               setDraft(file.content);
               setStatus(`Reloaded: ${file.path}`);
             })
-            .catch(() => {});
+            .catch((e) => setStatus(`Reload failed: ${String(e)}`));
         }
         // Convention: draft annotations file.
         const root = workspaceRootRef.current;
         if (root && p === `${root}/drafts/annotations.json`) {
-          loadAnnotations();
+          if (annotationsDebounceRef.current) clearTimeout(annotationsDebounceRef.current);
+          annotationsDebounceRef.current = setTimeout(() => void loadAnnotations(), 300);
         }
         if (root && p === `${root}/drafts/outline.md`) {
           loadOutline();
@@ -325,7 +371,9 @@ export default function App() {
       );
     });
 
-    invoke("terminal_resize", { session_id: sessionId, rows: term.rows, cols: term.cols }).catch(() => {});
+    invoke("terminal_resize", { session_id: sessionId, rows: term.rows, cols: term.cols }).catch((e) =>
+      setStatus(`Resize failed: ${String(e)}`),
+    );
   }
 
   function fitActiveTerminal() {
@@ -337,7 +385,7 @@ export default function App() {
       session_id: activeSessionId,
       rows: entry.term.rows,
       cols: entry.term.cols,
-    }).catch(() => {});
+    }).catch((e) => setStatus(`Resize failed: ${String(e)}`));
   }
 
   useEffect(() => {
@@ -507,6 +555,37 @@ export default function App() {
       setOutlineText(f.content);
     } catch {
       setOutlineText("");
+    }
+  }
+
+  async function refreshAutomationTasks() {
+    try {
+      const tasks = (await invoke("automation_list_tasks")) as AutomationTask[];
+      tasks.sort((a, b) => b.created_at_ms - a.created_at_ms);
+      setAutomationTasks(tasks);
+    } catch (e) {
+      setStatus(`Automation list failed: ${String(e)}`);
+    }
+  }
+
+  async function enqueueTask() {
+    if (!autoTitle.trim() || !autoPrompt.trim()) {
+      setStatus("Task title and prompt are required.");
+      return;
+    }
+    setStatus("");
+    try {
+      await invoke("automation_enqueue_task", {
+        agent_id: autoAgentId,
+        title: autoTitle.trim(),
+        prompt: autoPrompt.trim(),
+      });
+      setAutoTitle("");
+      setAutoPrompt("");
+      setStatus("Task enqueued.");
+      await refreshAutomationTasks();
+    } catch (e) {
+      setStatus(`Enqueue failed: ${String(e)}`);
     }
   }
 
@@ -693,9 +772,18 @@ export default function App() {
     { label: "Start all agents", run: () => void startAllAgents() },
     { label: "Kill all agents", run: () => void killAllAgents() },
     { label: "Save current draft", run: () => void saveFile() },
+    { label: "Open editor", run: () => setRightTab("editor") },
     { label: "Open canon browser", run: () => setRightTab("reader") },
+    { label: "Refresh canon chapters", run: () => void refreshCanonChapters() },
     { label: "Open DB search", run: () => setRightTab("db") },
     { label: "Open outline", run: () => setRightTab("outline") },
+    {
+      label: "Open task queue",
+      run: () => {
+        setRightTab("automation");
+        void refreshAutomationTasks();
+      },
+    },
   ];
   const q = cmdQuery.trim().toLowerCase();
   const paletteCommands = !q
@@ -936,9 +1024,17 @@ export default function App() {
                   ["reader", "Reader"],
                   ["db", "DB"],
                   ["outline", "Outline"],
+                  ["automation", "Tasks"],
                 ] as const
               ).map(([id, label]) => (
-                <button key={id} className={`sfTab ${rightTab === id ? "active" : ""}`} onClick={() => setRightTab(id)}>
+                <button
+                  key={id}
+                  className={`sfTab ${rightTab === id ? "active" : ""}`}
+                  onClick={() => {
+                    setRightTab(id);
+                    if (id === "automation") void refreshAutomationTasks();
+                  }}
+                >
                   {label}
                 </button>
               ))}
@@ -1059,7 +1155,6 @@ export default function App() {
                     <div className="min-h-0">
                       <MarkdownEditor
                         value={canonText}
-                        onChange={setCanonText}
                         readOnly
                         placeholder="Canon chapter text will appear here."
                       />
@@ -1136,6 +1231,131 @@ export default function App() {
                 </div>
               ) : null}
 
+              {rightTab === "automation" ? (
+                <div className="h-full min-h-0 flex flex-col" style={{ overflow: "auto" }}>
+                  {/* New task form */}
+                  <div
+                    style={{
+                      padding: "12px 14px",
+                      background: "var(--bg0)",
+                      borderBottom: "1px solid var(--line0)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                    }}
+                  >
+                    <div className="sfSectionTitle" style={{ paddingTop: 0 }}>NEW TASK</div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <select
+                        className="sfInput"
+                        style={{ width: 120, minWidth: 120 }}
+                        value={autoAgentId}
+                        onChange={(e) => setAutoAgentId(e.currentTarget.value)}
+                      >
+                        {agents.map((a) => (
+                          <option key={a.id} value={a.id}>{a.label}</option>
+                        ))}
+                      </select>
+                      <input
+                        className="sfInput"
+                        style={{ flex: 1 }}
+                        value={autoTitle}
+                        onChange={(e) => setAutoTitle(e.currentTarget.value)}
+                        placeholder="Task title"
+                      />
+                    </div>
+                    <textarea
+                      className="sfInput"
+                      style={{ resize: "vertical", minHeight: 72, fontFamily: "var(--mono)", fontSize: 12 }}
+                      value={autoPrompt}
+                      onChange={(e) => setAutoPrompt(e.currentTarget.value)}
+                      placeholder="Prompt sent to agent. Agent must output JSON between BEGIN_RESULT / END_RESULT markers."
+                    />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        className="sfBtn"
+                        onClick={() => void enqueueTask()}
+                        disabled={!autoTitle.trim() || !autoPrompt.trim()}
+                      >
+                        Enqueue Task
+                      </button>
+                      <button className="sfBtn secondary" onClick={() => void refreshAutomationTasks()}>
+                        Refresh
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Task list */}
+                  <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: "10px 14px" }}>
+                    <div className="sfSectionTitle" style={{ paddingTop: 0, paddingBottom: 8 }}>
+                      TASKS ({automationTasks.length})
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {automationTasks.map((t) => {
+                        const statusColors: Record<string, string> = {
+                          queued: "#555",
+                          running: "#F4A261",
+                          completed: "#6BBF5F",
+                          failed: "#BF5F56",
+                        };
+                        const color = statusColors[t.status] ?? "#555";
+                        const elapsed =
+                          t.finished_at_ms && t.started_at_ms
+                            ? `${((t.finished_at_ms - t.started_at_ms) / 1000).toFixed(1)}s`
+                            : null;
+                        return (
+                          <div
+                            key={t.id}
+                            style={{
+                              borderRadius: 8,
+                              border: `1px solid ${color}33`,
+                              background: "rgba(255,255,255,0.02)",
+                              padding: "10px 12px",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                              <span
+                                style={{
+                                  fontFamily: "var(--mono)",
+                                  fontSize: 10,
+                                  color,
+                                  fontWeight: 700,
+                                  textTransform: "uppercase",
+                                  minWidth: 70,
+                                }}
+                              >
+                                {t.status}
+                              </span>
+                              <span style={{ fontFamily: "var(--sans)", fontSize: 13, color: "#ccc", flex: 1 }}>
+                                {t.title}
+                              </span>
+                              <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "#444" }}>
+                                {t.agent_id}
+                              </span>
+                            </div>
+                            {t.error ? (
+                              <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "#BF5F56", marginTop: 4 }}>
+                                {t.error}
+                              </div>
+                            ) : null}
+                            {elapsed ? (
+                              <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "#444", marginTop: 2 }}>
+                                {elapsed}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                      {!automationTasks.length ? (
+                        <div style={{ fontFamily: "var(--mono)", fontSize: 12, color: "#444" }}>
+                          No tasks yet. Enqueue a task above.
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               {rightTab === "outline" ? (
                 <div className="h-full min-h-0 flex flex-col">
                   <div
@@ -1162,7 +1382,6 @@ export default function App() {
                         outlineText ||
                         "# Outline\n\nCreate `drafts/outline.md` in your workspace to show outline here.\n\nTip: agents can update it and the UI will auto-reload."
                       }
-                      onChange={setOutlineText}
                       readOnly
                     />
                   </div>
