@@ -1,0 +1,6 @@
+beautifulsoup4==4.13.5
+chromadb==1.1.0
+EbookLib==0.18
+lxml==5.4.0
+sentence-transformers==3.0.1
+

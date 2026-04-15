@@ -1,0 +1,521 @@
+.sfShell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg1);
+  color: var(--ink1);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+}
+
+.sfTopbar {
+  height: 44px;
+  flex: 0 0 44px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14px;
+  background: var(--bg0);
+  border-bottom: 1px solid var(--line0);
+}
+
+.sfWinDots {
+  display: flex;
+  gap: 7px;
+}
+.sfDot {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+}
+
+.sfTitle {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #f4a261;
+}
+.sfVersion {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #444;
+}
+
+.sfTopbarActions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sfInput {
+  width: min(520px, 44vw);
+  min-width: 220px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 9px 14px;
+  color: #ccc;
+  font-size: 12.5px;
+  outline: none;
+  font-family: var(--mono);
+}
+.sfInput:focus {
+  border-color: rgba(244, 162, 97, 0.35);
+}
+
+.sfBtn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #f4a261;
+  background: rgba(244, 162, 97, 0.1);
+  border: 1px solid rgba(244, 162, 97, 0.2);
+  cursor: pointer;
+}
+.sfBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.sfBtn.secondary {
+  color: #888;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.sfCmdBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: #666;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+.sfCmdBtn:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.sfKbd {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #777;
+  line-height: 16px;
+}
+
+.sfChips {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #555;
+  margin-left: 8px;
+}
+
+.sfBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.sfSidebar {
+  width: 230px;
+  flex: 0 0 230px;
+  background: var(--bg0);
+  border-right: 1px solid var(--line0);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sfSectionTitle {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: #444;
+  padding: 14px 12px 8px;
+}
+
+.sfAgentList {
+  padding: 0 10px 8px;
+}
+
+.sfAgentRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 120ms ease;
+}
+.sfAgentRow:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+.sfAgentRow.active {
+  background: rgba(244, 162, 97, 0.08);
+}
+
+.sfAgentIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.03);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: #777;
+}
+.sfAgentRow.active .sfAgentIcon {
+  background: rgba(244, 162, 97, 0.15);
+  color: #f4a261;
+}
+
+.sfAgentMeta {
+  flex: 1;
+  min-width: 0;
+}
+.sfAgentName {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: #777;
+  line-height: 1.3;
+}
+.sfAgentRow.active .sfAgentName {
+  color: #ccc;
+  font-weight: 600;
+}
+.sfAgentRole {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #444;
+}
+
+.sfAgentRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sfPulseDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #333;
+}
+.sfPulseDot.on {
+  background: #7bc87f;
+  box-shadow: 0 0 6px rgba(123, 200, 127, 0.35);
+  animation: sfSoftPulse 2.5s ease-in-out infinite;
+}
+
+.sfSplitLine {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.04);
+  margin: 6px 14px;
+}
+
+.sfWorkspace {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 6px 10px;
+}
+
+.sfTreeRow {
+  display: block;
+}
+.sfTreeBtn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 7px;
+  padding: 4px 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 120ms ease;
+}
+.sfTreeBtn:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+.sfTwisty {
+  width: 12px;
+  font-size: 9px;
+  color: #555;
+  text-align: center;
+}
+.sfTreeName {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: #777;
+}
+.sfTreeName.file {
+  color: #666;
+}
+
+.sfMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  min-height: 0;
+}
+
+.sfTerminalCol {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg1);
+  border-right: 1px solid var(--line0);
+}
+
+.sfTabbar {
+  height: 36px;
+  flex: 0 0 36px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 6px;
+  background: var(--bg0);
+  border-bottom: 1px solid var(--line0);
+  overflow: auto;
+}
+
+.sfTab {
+  height: 100%;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: #555;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  position: relative;
+  white-space: nowrap;
+}
+.sfTab:hover {
+  color: #888;
+}
+.sfTab.active {
+  color: #f4a261;
+  font-weight: 600;
+}
+.sfTab.active::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  background: currentColor;
+  border-radius: 2px 2px 0 0;
+}
+
+.sfTerminalWrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: var(--bg1);
+}
+.sfTerminalFrame {
+  position: absolute;
+  inset: 0;
+}
+.sfTerminalFrame.inactive {
+  display: none;
+}
+
+.sfRightCol {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg2);
+}
+
+.sfVDivider {
+  width: 8px;
+  flex: 0 0 8px;
+  cursor: col-resize;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.02)
+  );
+}
+.sfVDivider:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(244, 162, 97, 0.1),
+    rgba(244, 162, 97, 0.28),
+    rgba(244, 162, 97, 0.1)
+  );
+}
+
+.sfPanelHead {
+  height: 36px;
+  flex: 0 0 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  background: var(--bg0);
+  border-bottom: 1px solid var(--line0);
+}
+
+.sfPanelContent {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sfBottomBar {
+  height: 26px;
+  flex: 0 0 26px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 14px;
+  background: var(--bg0);
+  border-top: 1px solid var(--line0);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: #333;
+}
+
+.sfOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 100px;
+}
+.sfPalette {
+  width: 460px;
+  background: #161615;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+  animation: sfCmdIn 0.15s ease;
+}
+.sfPaletteTop {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.sfPaletteInput {
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #ccc;
+  font-size: 14px;
+  font-family: var(--sans);
+}
+.sfCmdRow {
+  padding: 10px 16px;
+  font-size: 13px;
+  color: #888;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+.sfCmdRow:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.sfSetupCard {
+  width: min(680px, 92vw);
+  background: #121211;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.45);
+  animation: sfCmdIn 0.18s ease;
+}
+
+.sfSetupTitle {
+  font-family: var(--sans);
+  font-size: 20px;
+  font-weight: 700;
+  color: #e0dcd0;
+}
+
+.sfSetupBody {
+  margin-top: 8px;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.5;
+  color: #8e897f;
+}
+
+.sfSetupRow {
+  margin-top: 16px;
+}
+
+.sfSetupRow .sfInput {
+  width: 100%;
+}
+
+.sfSetupActions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@keyframes sfSoftPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@keyframes sfCmdIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
