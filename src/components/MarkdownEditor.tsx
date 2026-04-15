@@ -14,7 +14,7 @@ export type Annotation = {
 
 type Props = {
   value: string;
-  onChange: (next: string) => void;
+  onChange?: (next: string) => void;
   readOnly?: boolean;
   annotations?: Annotation[];
   placeholder?: string;
@@ -82,7 +82,7 @@ export default function MarkdownEditor({
     placeholder,
     onChange: (v) => {
       setLocalValue(v);
-      onChange(v);
+      onChange?.(v);
     },
   };
 
