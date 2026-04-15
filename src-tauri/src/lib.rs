@@ -656,7 +656,16 @@ fn fs_read_file(state: State<'_, AppState>, path: String) -> Result<FsFile, Stri
     if md.len() > 5 * 1024 * 1024 {
         return Err("Refusing to read files > 5MB".to_string());
     }
-    let content = fs::read_to_string(&target).map_err(|e| format!("read_to_string failed: {e}"))?;
+    let bytes = fs::read(&target).map_err(|e| format!("read failed: {e}"))?;
+    let content = match String::from_utf8(bytes) {
+        Ok(s) => s,
+        Err(_) => {
+            return Err(format!(
+                "Cannot open binary or non-UTF-8 file: {}",
+                target.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| path.clone())
+            ));
+        }
+    };
     Ok(FsFile {
         path,
         content,
@@ -1070,6 +1079,10 @@ fn spawn_agent_terminal(
                 Err(_) => break,
             }
         }
+        // Natural PTY exit (EOF or read error): remove the session so the
+        // frontend can rehydrate a fresh one when the user clicks Start.
+        state.sessions.remove(&session_id_for_thread);
+        state.agent_sessions.retain(|_, v| v != &session_id_for_thread);
         let _ = app_for_thread.emit(
             "terminal://exit",
             TerminalOutput {
@@ -1355,10 +1368,31 @@ pub fn run() {
             if let Ok(mut guard) = app.state::<AppState>().workspace_root.lock() {
                 *guard = ws;
             }
-            for task in load_tasks_from_disk(app.handle()) {
-                app.state::<AppState>().tasks.insert(task.id.clone(), task);
+            let state = app.state::<AppState>();
+            let mut had_interrupted_or_pending = false;
+            for mut task in load_tasks_from_disk(app.handle()) {
+                match task.status.as_str() {
+                    "running" => {
+                        task.status = "failed".into();
+                        task.error = Some("Interrupted by app restart".into());
+                        task.finished_at_ms = Some(now_ms());
+                        had_interrupted_or_pending = true;
+                    }
+                    "queued" => {
+                        if let Ok(mut q) = state.task_queue.lock() {
+                            q.push_back(task.id.clone());
+                        }
+                        had_interrupted_or_pending = true;
+                    }
+                    _ => {}
+                }
+                state.tasks.insert(task.id.clone(), task);
             }
-            let _ = restart_drafts_watcher(app.handle(), &app.state::<AppState>());
+            if had_interrupted_or_pending {
+                save_tasks_to_disk(app.handle(), &state);
+                start_runner_if_needed(app.handle());
+            }
+            let _ = restart_drafts_watcher(app.handle(), &state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

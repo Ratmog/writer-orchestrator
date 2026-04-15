@@ -305,8 +305,36 @@ export default function App() {
       });
       unlistenExit = await listen<TerminalOutput>("terminal://exit", (event) => {
         if (disposed) return;
-        if (event.payload.session_id === activeSessionId) {
+        const exitedSessionId = event.payload.session_id;
+        const entry = terminalsRef.current.get(exitedSessionId);
+        if (entry) {
+          try {
+            entry.term.dispose();
+          } catch {}
+          terminalsRef.current.delete(exitedSessionId);
+        }
+        let exitedAgentId: string | null = null;
+        setSessionsByAgent((prev) => {
+          const next: Record<string, string> = {};
+          for (const [aid, sid] of Object.entries(prev)) {
+            if (sid === exitedSessionId) {
+              exitedAgentId = aid;
+            } else {
+              next[aid] = sid;
+            }
+          }
+          return exitedAgentId ? next : prev;
+        });
+        setActiveTerminalAgentId((prev) => {
+          if (prev && exitedAgentId && prev === exitedAgentId) {
+            return null;
+          }
+          return prev;
+        });
+        if (exitedSessionId === activeSessionId) {
           setStatus("Active terminal session exited.");
+        } else {
+          setStatus("Terminal session exited.");
         }
       });
 
@@ -470,6 +498,18 @@ export default function App() {
       setStatus("Workspace path is required.");
       return false;
     }
+    const runningAgentIds = Object.keys(sessionsByAgent);
+    if (runningAgentIds.length > 0) {
+      const ok = window.confirm(
+        `Warning: ${runningAgentIds.length} agent session(s) are running (${runningAgentIds.join(", ")}).\n\n` +
+          "Changing the workspace will NOT move them — they keep running with the old working directory. " +
+          "Consider killing agents first and restarting them after the switch.\n\nContinue anyway?",
+      );
+      if (!ok) {
+        setStatus("Workspace change cancelled.");
+        return false;
+      }
+    }
     setStatus("");
     try {
       const ws = (await invoke("set_workspace", { root: target })) as { root: string };
@@ -528,8 +568,9 @@ export default function App() {
   }
 
   async function loadAnnotations() {
-    if (!workspaceRoot) return;
-    const p = `${workspaceRoot}/drafts/annotations.json`;
+    const root = workspaceRootRef.current;
+    if (!root) return;
+    const p = `${root}/drafts/annotations.json`;
     try {
       const f = (await invoke("fs_read_file", { path: p })) as FsFile;
       const raw = JSON.parse(f.content) as Array<any>;
@@ -548,8 +589,9 @@ export default function App() {
   }
 
   async function loadOutline() {
-    if (!workspaceRoot) return;
-    const p = `${workspaceRoot}/drafts/outline.md`;
+    const root = workspaceRootRef.current;
+    if (!root) return;
+    const p = `${root}/drafts/outline.md`;
     try {
       const f = (await invoke("fs_read_file", { path: p })) as FsFile;
       setOutlineText(f.content);
@@ -771,7 +813,7 @@ export default function App() {
   const allPaletteCommands: Array<{ label: string; run: () => void }> = [
     { label: "Start all agents", run: () => void startAllAgents() },
     { label: "Kill all agents", run: () => void killAllAgents() },
-    { label: "Save current draft", run: () => void saveFile() },
+    ...(activeFilePath ? [{ label: "Save current draft", run: () => void saveFile() }] : []),
     { label: "Open editor", run: () => setRightTab("editor") },
     { label: "Open canon browser", run: () => setRightTab("reader") },
     { label: "Refresh canon chapters", run: () => void refreshCanonChapters() },
