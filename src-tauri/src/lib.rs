@@ -307,6 +307,37 @@ fn save_workspace_root(app: &AppHandle, root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn tasks_config_path(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_config_dir()
+        .map(|d| d.join("automation_tasks.json"))
+        .map_err(|e| format!("app_config_dir failed: {e}"))
+}
+
+fn save_tasks_to_disk(app: &AppHandle, state: &AppState) {
+    let path = match tasks_config_path(app) {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let tasks: Vec<AutomationTask> = state.tasks.iter().map(|t| t.value().clone()).collect();
+    if let Ok(json) = serde_json::to_string_pretty(&tasks) {
+        let _ = ensure_parent_dir(&path);
+        let _ = fs::write(&path, json);
+    }
+}
+
+fn load_tasks_from_disk(app: &AppHandle) -> Vec<AutomationTask> {
+    let path = match tasks_config_path(app) {
+        Ok(p) => p,
+        Err(_) => return vec![],
+    };
+    let raw = match fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+    serde_json::from_str::<Vec<AutomationTask>>(&raw).unwrap_or_default()
+}
+
 fn workspace_is_configured(app: &AppHandle) -> bool {
     let config_path = match workspace_config_path(app) {
         Ok(p) => p,
@@ -455,7 +486,61 @@ fn pick_workspace_folder() -> Result<Option<String>, String> {
         }
         return Ok(Some(path));
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        // Try zenity (GNOME/GTK), then kdialog (KDE).
+        let zenity = Command::new("zenity")
+            .arg("--file-selection")
+            .arg("--directory")
+            .arg("--title=Select Workspace Folder")
+            .output();
+        if let Ok(o) = zenity {
+            if o.status.success() {
+                let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                return Ok(if path.is_empty() { None } else { Some(path) });
+            }
+            // Exit code 1 means user canceled.
+            if o.status.code() == Some(1) {
+                return Ok(None);
+            }
+        }
+        // zenity not available or failed; try kdialog.
+        let kdialog = Command::new("kdialog")
+            .arg("--getexistingdirectory")
+            .arg(".")
+            .output();
+        if let Ok(o) = kdialog {
+            if o.status.success() {
+                let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                return Ok(if path.is_empty() { None } else { Some(path) });
+            }
+            if o.status.code() == Some(1) {
+                return Ok(None);
+            }
+        }
+        Ok(None)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let script = "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); \
+                      $d = New-Object System.Windows.Forms.FolderBrowserDialog; \
+                      $d.Description = 'Select Workspace Folder'; \
+                      if ($d.ShowDialog() -eq 'OK') { Write-Output $d.SelectedPath }";
+        let out = Command::new("powershell")
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg(script)
+            .output()
+            .map_err(|e| format!("powershell failed: {e}"))?;
+        if out.status.success() {
+            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !path.is_empty() {
+                return Ok(Some(path));
+            }
+        }
+        Ok(None)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
         Ok(None)
     }
@@ -777,6 +862,7 @@ fn handle_capture(app: &AppHandle, state: &AppState, session_id: &str, data: &st
         task.finished_at_ms = Some(now_ms());
         task.result_json = Some(parsed_json.clone());
     }
+    save_tasks_to_disk(app, state);
     let _ = app.emit("automation://task_updated", &task_id);
 
     maybe_write_result_files(app, state, &parsed_json);
@@ -1087,6 +1173,7 @@ fn start_runner_if_needed(app: &AppHandle) {
             }
             None => continue,
         };
+        save_tasks_to_disk(&app_for_thread, &state);
         let _ = app_for_thread.emit("automation://task_updated", &task_id);
 
         let session_id = match spawn_agent_terminal(app_for_thread.clone(), state.clone(), agent_id.clone()) {
@@ -1097,6 +1184,7 @@ fn start_runner_if_needed(app: &AppHandle) {
                     t.finished_at_ms = Some(now_ms());
                     t.error = Some(e);
                 }
+                save_tasks_to_disk(&app_for_thread, &state);
                 let _ = app_for_thread.emit("automation://task_updated", &task_id);
                 continue;
             }
@@ -1164,6 +1252,7 @@ fn start_runner_if_needed(app: &AppHandle) {
                 t.finished_at_ms = Some(now_ms());
                 t.error = Some(e);
             }
+            save_tasks_to_disk(&app_for_thread, &state);
             let _ = app_for_thread.emit("automation://task_updated", &task_id);
             continue;
         }
@@ -1176,6 +1265,7 @@ fn start_runner_if_needed(app: &AppHandle) {
                 t.finished_at_ms = Some(now_ms());
                 t.error = Some("Timed out waiting for result markers.".to_string());
             }
+            save_tasks_to_disk(&app_for_thread, &state);
             let _ = app_for_thread.emit("automation://task_updated", &task_id);
         }
     });
@@ -1209,6 +1299,7 @@ fn automation_enqueue_task(
         q.push_back(id.clone());
     }
     start_runner_if_needed(&app);
+    save_tasks_to_disk(&app, &state);
     let _ = app.emit("automation://task_updated", &id);
     Ok(AutomationEnqueueResult { task_id: id })
 }
@@ -1263,6 +1354,9 @@ pub fn run() {
             let ws = load_workspace_root(app.handle());
             if let Ok(mut guard) = app.state::<AppState>().workspace_root.lock() {
                 *guard = ws;
+            }
+            for task in load_tasks_from_disk(app.handle()) {
+                app.state::<AppState>().tasks.insert(task.id.clone(), task);
             }
             let _ = restart_drafts_watcher(app.handle(), &app.state::<AppState>());
             Ok(())
