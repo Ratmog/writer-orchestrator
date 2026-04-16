@@ -599,6 +599,25 @@ fn resolve_under_root(root: &Path, user_path: &str) -> Result<PathBuf, String> {
     Ok(normalized)
 }
 
+fn reject_symlink_components(root_canon: &Path, target: &Path) -> Result<(), String> {
+    let rel = target
+        .strip_prefix(root_canon)
+        .map_err(|_| "Path is outside workspace root".to_string())?;
+    let mut cur = root_canon.to_path_buf();
+    for c in rel.components() {
+        cur.push(c.as_os_str());
+        match fs::symlink_metadata(&cur) {
+            Ok(md) => {
+                if md.file_type().is_symlink() {
+                    return Err("Symlink paths are not allowed for write operations".to_string());
+                }
+            }
+            Err(_) => break, // Remaining path does not exist yet; caller may create it.
+        }
+    }
+    Ok(())
+}
+
 fn mtime_ms(path: &Path) -> Option<u128> {
     let md = fs::metadata(path).ok()?;
     let modified = md.modified().ok()?;
@@ -682,6 +701,7 @@ fn fs_write_file(state: State<'_, AppState>, path: String, content: String) -> R
     if !parent.starts_with(&root_canon) {
         return Err("Path is outside workspace root".to_string());
     }
+    reject_symlink_components(&root_canon, &target)?;
     ensure_parent_dir(&target)?;
     fs::write(&target, content).map_err(|e| format!("write failed: {e}"))?;
     Ok(())
@@ -1448,6 +1468,22 @@ mod tests {
         let root = mk_temp_root();
         let err = resolve_under_root(&root, "../../etc/passwd").expect_err("must reject");
         assert!(err.to_lowercase().contains("outside workspace"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reject_symlink_components_rejects_linked_parent() {
+        use std::os::unix::fs::symlink;
+
+        let root = mk_temp_root();
+        let outside = mk_temp_root();
+        let link = root.join("drafts");
+        symlink(&outside, &link).expect("create symlink");
+
+        let root_canon = fs::canonicalize(&root).expect("canon root");
+        let target = root.join("drafts/ch1.md");
+        let err = reject_symlink_components(&root_canon, &target).expect_err("must reject symlink parent");
+        assert!(err.to_lowercase().contains("symlink"));
     }
 
     #[test]
